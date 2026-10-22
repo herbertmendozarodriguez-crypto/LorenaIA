@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#6c4cf1">
+<title>Lorena IA</title>
+<style>
+:root{--bg:#f5f3ff;--card:#fff;--text:#1f1b3a;--muted:#6b678a;--primary:#6c4cf1;--primary2:#9b5cff;--bubble:#ece8ff;--line:#e3dfff}
+@media (prefers-color-scheme:dark){:root{--bg:#14121f;--card:#1e1b2e;--text:#f1eeff;--muted:#a49fc4;--bubble:#2a2644;--line:#2f2b4a}}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);display:flex;flex-direction:column;height:100dvh;max-width:720px;margin:0 auto}
+header{padding:calc(16px + env(safe-area-inset-top)) 20px 16px;background:linear-gradient(135deg,var(--primary),var(--primary2));color:#fff;border-radius:0 0 24px 24px}
+header h1{font-size:1.3rem}
+header p{font-size:.85rem;opacity:.9;margin-top:2px}
+main{flex:1;min-height:0}
+section{display:none;height:100%;flex-direction:column}
+section.active{display:flex}
+#messages{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px}
+.msg{max-width:82%;padding:10px 14px;border-radius:18px;line-height:1.4;font-size:.95rem;word-wrap:break-word;white-space:pre-wrap}
+.bot{background:var(--bubble);border-bottom-left-radius:6px;align-self:flex-start}
+.me{background:linear-gradient(135deg,var(--primary),var(--primary2));color:#fff;border-bottom-right-radius:6px;align-self:flex-end}
+.row{display:flex;gap:8px;padding:10px 14px}
+.row input{flex:1;min-width:0;padding:12px 16px;border-radius:24px;border:1px solid var(--line);background:var(--card);color:var(--text);font-size:16px;outline:none}
+.row input:focus{border-color:var(--primary)}
+.row button{border:0;border-radius:24px;padding:0 18px;min-height:46px;background:linear-gradient(135deg,var(--primary),var(--primary2));color:#fff;font-size:1rem;font-weight:600;cursor:pointer}
+#tasksTab{padding-top:8px}
+#count{padding:4px 18px 8px;font-size:.85rem;color:var(--muted)}
+#list{list-style:none;flex:1;overflow-y:auto;padding:0 14px 14px}
+#list li{display:flex;align-items:center;gap:10px;background:var(--card);padding:12px 14px;border-radius:14px;margin-bottom:8px;border:1px solid var(--line)}
+.check{width:28px;height:28px;flex:none;border-radius:50%;border:2px solid var(--primary);background:transparent;color:#fff;font-size:.9rem;cursor:pointer}
+li.done .check{background:var(--primary)}
+.txt{flex:1;word-break:break-word}
+li.done .txt{text-decoration:line-through;color:var(--muted)}
+.del{border:0;background:none;color:var(--muted);font-size:1.1rem;padding:6px;cursor:pointer}
+.empty{text-align:center;color:var(--muted);padding:30px 10px}
+nav{display:flex;background:var(--card);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
+nav button{flex:1;padding:14px 0;border:0;background:none;color:var(--muted);font-size:.85rem;cursor:pointer}
+nav button.active{color:var(--primary);font-weight:700}
+</style>
+</head>
+<body>
+<header>
+  <h1>✨ Lorena IA</h1>
+  <p>Tu asistente personal</p>
+</header>
+
+<main>
+  <section id="chatTab" class="active">
+    <div id="messages"></div>
+    <form id="chatForm" class="row" autocomplete="off">
+      <input id="chatInput" type="text" placeholder="Escribe un mensaje...">
+      <button type="submit">Enviar</button>
+    </form>
+  </section>
+
+  <section id="tasksTab">
+    <form id="taskForm" class="row" autocomplete="off">
+      <input id="taskInput" type="text" placeholder="Nueva tarea...">
+      <button type="submit">Añadir</button>
+    </form>
+    <p id="count"></p>
+    <ul id="list"></ul>
+  </section>
+</main>
+
+<nav>
+  <button class="active" data-tab="chatTab">💬 Chat</button>
+  <button data-tab="tasksTab">✅ Tareas</button>
+</nav>
+
+<script>
+const $ = id => document.getElementById(id);
+
+function load(k, d){ try { return JSON.parse(localStorage.getItem(k)) || d; } catch(e){ return d; } }
+function save(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch(e){} }
+
+let tasks = load('lia_tasks', []);
+let chat = load('lia_chat', []);
+
+/* ---------- Pestañas ---------- */
+document.querySelectorAll('nav button').forEach(b => {
+  b.addEventListener('click', () => {
+    document.querySelectorAll('nav button, section').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    $(b.dataset.tab).classList.add('active');
+    $('messages').scrollTop = $('messages').scrollHeight;
+  });
+});
+
+/* ---------- Chat ---------- */
+function addMsg(role, text, noSave){
+  const el = document.createElement('div');
+  el.className = 'msg ' + role;
+  el.textContent = text;
+  $('messages').appendChild(el);
+  $('messages').scrollTop = $('messages').scrollHeight;
+  if (!noSave){
+    chat.push({role, text});
+    chat = chat.slice(-60);
+    save('lia_chat', chat);
+  }
+  return el;
+}
+
+function botReply(t){
+  const s = t.toLowerCase();
+  if (s.startsWith('tarea:')){
+    const x = t.slice(6).trim();
+    if (x){ addTask(x); return '✅ Agregué la tarea: "' + x + '". La verás en la pestaña Tareas.'; }
+  }
+  if (/hola|buenas|hey/.test(s)) return '¡Hola! Soy Lorena IA 👋 ¿En qué te ayudo hoy?';
+  if (/tarea|pendiente/.test(s)){
+    const p = tasks.filter(x => !x.done).length;
+    return p ? 'Tienes ' + p + ' tarea(s) pendiente(s). ¡Tú puedes! 💪' : 'No tienes tareas pendientes. ¡Buen trabajo! 🎉';
+  }
+  if (/gracias/.test(s)) return 'De nada 😊';
+  if (/ayuda|puedes/.test(s)) return 'Por ahora puedo saludarte, contarte tus pendientes y agregar tareas si escribes: tarea: tu texto';
+  const d = ['Interesante, cuéntame más.', 'Te escucho. ¿Qué te gustaría hacer primero?', 'Anotado. Pronto podré responderte con inteligencia real 😉'];
+  return d[Math.floor(Math.random() * d.length)];
+}
+
+$('chatForm').addEventListener('submit', e => {
+  e.preventDefault();
+  const t = $('chatInput').value.trim();
+  if (!t) return;
+  $('chatInput').value = '';
+  addMsg('me', t);
+  const typing = addMsg('bot', 'Escribiendo…', true);
+  setTimeout(() => { typing.remove(); addMsg('bot', botReply(t)); }, 700);
+});
+
+/* ---------- Tareas ---------- */
+function addTask(text){
+  tasks.unshift({id: Date.now(), text: text, done: false});
+  save('lia_tasks', tasks);
+  renderTasks();
+}
+
+function renderTasks(){
+  const list = $('list');
+  list.innerHTML = '';
+  if (!tasks.length){
+    const p = document.createElement('p');
+    p.className = 'empty';
+    p.textContent = 'Aún no tienes tareas. ¡Agrega la primera!';
+    list.appendChild(p);
+  }
+  tasks.forEach(t => {
+    const li = document.createElement('li');
+    if (t.done) li.className = 'done';
+
+    const c = document.createElement('button');
+    c.className = 'check';
+    c.textContent = t.done ? '✓' : '';
+    c.setAttribute('aria-label', 'Completar tarea');
+    c.onclick = () => { t.done = !t.done; save('lia_tasks', tasks); renderTasks(); };
+
+    const s = document.createElement('span');
+    s.className = 'txt';
+    s.textContent = t.text;
+
+    const d = document.createElement('button');
+    d.className = 'del';
+    d.textContent = '✕';
+    d.setAttribute('aria-label', 'Borrar tarea');
+    d.onclick = () => { tasks = tasks.filter(x => x.id !== t.id); save('lia_tasks', tasks); renderTasks(); };
+
+    li.append(c, s, d);
+    list.appendChild(li);
+  });
+  const p = tasks.filter(x => !x.done).length;
+  $('count').textContent = tasks.length ? p + ' pendiente(s) de ' + tasks.length : '';
+}
+
+$('taskForm').addEventListener('submit', e => {
+  e.preventDefault();
+  const t = $('taskInput').value.trim();
+  if (!t) return;
+  $('taskInput').value = '';
+  addTask(t);
+});
+
+/* ---------- Inicio ---------- */
+if (!chat.length) addMsg('bot', '¡Hola! Soy Lorena IA ✨ Escribe "tarea: comprar pan" y la agrego a tu lista.');
+else chat.forEach(m => addMsg(m.role, m.text, true));
+renderTasks();
+</script>
+</body>
+</html>
